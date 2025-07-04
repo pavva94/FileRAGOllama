@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+asyncpg
+sentence-transformers
+langchain
+httpx
+aiofiles
+python-multipart
