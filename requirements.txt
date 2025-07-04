@@ -3,6 +3,9 @@ uvicorn
 asyncpg
 sentence-transformers
 langchain
+langchain-community
 httpx
 aiofiles
 python-multipart
+requests
+streamlit
