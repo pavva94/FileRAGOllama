@@ -1,11 +1,25 @@
+# Core dependencies
 fastapi
 uvicorn
-asyncpg
-sentence-transformers
-langchain
-langchain-community
-httpx
-aiofiles
-python-multipart
-requests
 streamlit
+python-multipart
+
+# RAG system dependencies
+sentence-transformers
+numpy
+
+# Document processing
+PyPDF2
+python-docx
+markdown
+
+# HTTP requests
+requests
+
+# Optional: For better text processing
+nltk
+spacy
+
+# For development
+pytest
+black

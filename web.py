@@ -1,17 +1,18 @@
 import streamlit as st
 import requests
 import json
+from datetime import datetime
 import os
-from typing import List, Dict, Optional
+from pathlib import Path
 import time
 
 # Configuration
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_BASE_URL = "http://localhost:8000"
 
 # Page configuration
 st.set_page_config(
-    page_title="RAG Assistant",
-    page_icon="🤖",
+    page_title="Simple RAG System",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -20,338 +21,387 @@ st.set_page_config(
 st.markdown("""
 <style>
     .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
         text-align: center;
-        margin-bottom: 2rem;
+        padding: 2rem 0;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        margin: -1rem -1rem 2rem -1rem;
+        border-radius: 0 0 10px 10px;
     }
-    .section-header {
-        font-size: 1.5rem;
-        color: #2c3e50;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-        border-bottom: 2px solid #3498db;
-        padding-bottom: 0.5rem;
+
+    .stAlert {
+        margin-top: 1rem;
     }
-    .upload-section {
+
+    .file-info {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+    }
+
+    .answer-container {
         background-color: #f8f9fa;
         padding: 1.5rem;
         border-radius: 10px;
-        margin-bottom: 2rem;
+        border-left: 4px solid #667eea;
+        margin: 1rem 0;
     }
-    .question-section {
-        background-color: #e8f4f8;
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin-bottom: 2rem;
+
+    .source-tag {
+        background-color: #e3f2fd;
+        padding: 0.25rem 0.5rem;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        margin: 0.2rem;
+        display: inline-block;
     }
-    .success-message {
-        color: #27ae60;
+
+    .confidence-score {
         font-weight: bold;
+        color: #4caf50;
     }
-    .error-message {
-        color: #e74c3c;
-        font-weight: bold;
-    }
-    .model-info {
-        background-color: #fff3cd;
-        padding: 1rem;
+
+    .model-status {
+        padding: 0.5rem;
         border-radius: 5px;
-        margin-bottom: 1rem;
+        text-align: center;
+        font-weight: bold;
+    }
+
+    .model-running {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .model-not-running {
+        background-color: #f8d7da;
+        color: #721c24;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
 # Helper functions
-def get_api_health():
-    """Check API health and get model information"""
+def check_api_connection():
+    """Check if API is accessible"""
     try:
         response = requests.get(f"{API_BASE_URL}/health", timeout=5)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return None
+        return response.status_code == 200, response.json() if response.status_code == 200 else None
     except requests.RequestException:
-        return None
+        return False, None
 
 
-def get_available_models():
-    """Get list of available Ollama models"""
+def upload_file_to_api(file_content, filename):
+    """Upload file to API"""
     try:
-        response = requests.get(f"{API_BASE_URL}/ollama/models", timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("available_models", []), data.get("current_model", "")
-        else:
-            return [], ""
-    except requests.RequestException:
-        return [], ""
-
-
-def upload_file(file, selected_model):
-    """Upload file to the API"""
-    try:
-        files = {"file": (file.name, file, file.type)}
+        files = {"file": (filename, file_content, "application/octet-stream")}
         response = requests.post(f"{API_BASE_URL}/upload", files=files, timeout=60)
+
         if response.status_code == 200:
-            return response.json()
+            return True, response.json()
         else:
-            return {"error": f"Upload failed: {response.text}"}
+            return False, response.json().get("detail", "Unknown error")
     except requests.RequestException as e:
-        return {"error": f"Upload failed: {str(e)}"}
+        return False, f"Connection error: {str(e)}"
 
 
-def get_uploaded_files():
-    """Get list of uploaded files"""
+def get_files_from_api():
+    """Get files from API"""
     try:
         response = requests.get(f"{API_BASE_URL}/files", timeout=10)
         if response.status_code == 200:
-            return response.json()
+            return True, response.json()
         else:
-            return []
-    except requests.RequestException:
-        return []
+            return False, response.json().get("detail", "Unknown error")
+    except requests.RequestException as e:
+        return False, f"Connection error: {str(e)}"
 
 
-def delete_file(file_id):
-    """Delete a file"""
+def delete_file_from_api(file_id):
+    """Delete file from API"""
     try:
         response = requests.delete(f"{API_BASE_URL}/files/{file_id}", timeout=10)
-        return response.status_code == 200
-    except requests.RequestException:
-        return False
+        if response.status_code == 200:
+            return True, response.json()
+        else:
+            return False, response.json().get("detail", "Unknown error")
+    except requests.RequestException as e:
+        return False, f"Connection error: {str(e)}"
 
 
-def ask_question(question, max_results=5):
-    """Ask a question to the RAG system"""
+def ask_question_to_api(question, max_results=5):
+    """Ask question to API"""
     try:
-        payload = {
+        data = {
             "question": question,
             "max_results": max_results
         }
-        response = requests.post(
-            f"{API_BASE_URL}/ask",
-            json=payload,
-            timeout=120
-        )
+        response = requests.post(f"{API_BASE_URL}/ask", json=data, timeout=30)
+
         if response.status_code == 200:
-            return response.json()
+            return True, response.json()
         else:
-            return {"error": f"Question failed: {response.text}"}
+            return False, response.json().get("detail", "Unknown error")
     except requests.RequestException as e:
-        return {"error": f"Question failed: {str(e)}"}
+        return False, f"Connection error: {str(e)}"
 
 
-def pull_model(model_name):
-    """Pull a model from Ollama"""
+def get_ollama_models():
+    """Get available Ollama models"""
     try:
-        response = requests.post(
-            f"{API_BASE_URL}/ollama/pull",
-            params={"model_name": model_name},
-            timeout=300
-        )
-        return response.status_code == 200
-    except requests.RequestException:
-        return False
+        response = requests.get(f"{API_BASE_URL}/ollama/models", timeout=10)
+        if response.status_code == 200:
+            return True, response.json()
+        else:
+            return False, response.json().get("detail", "Unknown error")
+    except requests.RequestException as e:
+        return False, f"Connection error: {str(e)}"
+
+
+def pull_ollama_model(model_name):
+    """Pull Ollama model"""
+    try:
+        response = requests.post(f"{API_BASE_URL}/ollama/pull", params={"model_name": model_name}, timeout=300)
+        if response.status_code == 200:
+            return True, response.json()
+        else:
+            return False, response.json().get("detail", "Unknown error")
+    except requests.RequestException as e:
+        return False, f"Connection error: {str(e)}"
+
+
+def format_file_size(size_bytes):
+    """Format file size in human readable format"""
+    if size_bytes == 0:
+        return "0 B"
+
+    size_names = ["B", "KB", "MB", "GB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024
+        i += 1
+
+    return f"{size_bytes:.1f} {size_names[i]}"
 
 
 # Initialize session state
-if "uploaded_files" not in st.session_state:
-    st.session_state.uploaded_files = []
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
+# Main header
+st.markdown('<div class="main-header"><h1>🧠 Simple RAG System</h1><p>Upload documents and ask questions</p></div>',
+            unsafe_allow_html=True)
 
-# Main app
-def main():
-    # Header
-    st.markdown('<h1 class="main-header">🤖 RAG Assistant</h1>', unsafe_allow_html=True)
-    st.markdown("**Upload documents, ask questions, and get AI-powered answers!**")
+# Check API connection
+api_connected, health_info = check_api_connection()
 
-    # Sidebar for system status and settings
-    with st.sidebar:
-        st.header("📊 System Status")
+if not api_connected:
+    st.error(
+        "❌ Cannot connect to the API server. Please make sure the FastAPI server is running on http://localhost:8000")
+    st.stop()
 
-        # Check API health
-        health_data = get_api_health()
-        if health_data:
-            if health_data.get("status") == "healthy":
-                st.success("✅ API is healthy")
-            else:
-                st.warning("⚠️ API is degraded")
+# Sidebar
+with st.sidebar:
+    st.header("📊 System Status")
 
-            st.info(f"**Ollama Status:** {health_data.get('ollama_status', 'Unknown')}")
-            st.info(f"**Current Model:** {health_data.get('ollama_model', 'Unknown')}")
+    # API Status
+    st.success("✅ API Connected")
+
+    # Ollama Status
+    if health_info:
+        ollama_status = health_info.get("ollama_status", "unknown")
+        if ollama_status == "running":
+            st.markdown('<div class="model-status model-running">🤖 Ollama: Running</div>', unsafe_allow_html=True)
+            st.write(f"**Current Model:** {health_info.get('ollama_model', 'Unknown')}")
         else:
-            st.error("❌ Cannot connect to API")
-            st.stop()
+            st.markdown('<div class="model-status model-not-running">🤖 Ollama: Not Running</div>',
+                        unsafe_allow_html=True)
+            st.info("Ollama is not running. The system will use basic responses without AI enhancement.")
 
-        st.header("⚙️ Settings")
-        max_results = st.slider("Max search results", 1, 10, 5)
+    st.divider()
 
-        # Refresh button
-        if st.button("🔄 Refresh Status"):
-            st.rerun()
+    # Ollama Management
+    st.header("🤖 Ollama Management")
 
-    # Main content area
-    col1, col2 = st.columns([1, 1])
+    # Get available models
+    models_success, models_data = get_ollama_models()
 
-    with col1:
-        # Model selection section
-        st.markdown('<div class="section-header">🎯 Model Selection</div>', unsafe_allow_html=True)
+    if models_success and models_data.get("available_models"):
+        st.subheader("Available Models")
+        for model in models_data["available_models"]:
+            st.write(f"• {model['name']} ({format_file_size(model['size'])})")
 
-        available_models, current_model = get_available_models()
+    # Model pulling
+    st.subheader("Pull New Model")
+    model_to_pull = st.text_input("Model name (e.g., llama3.2:latest)", key="model_pull")
 
-        if available_models:
-            model_names = [model["name"] for model in available_models]
-            try:
-                current_index = model_names.index(current_model) if current_model in model_names else 0
-            except ValueError:
-                current_index = 0
-
-            selected_model = st.selectbox(
-                "Choose a model:",
-                options=model_names,
-                index=current_index,
-                help="Select the Ollama model to use for answering questions"
-            )
-
-            # Show model info
-            selected_model_info = next((m for m in available_models if m["name"] == selected_model), None)
-            if selected_model_info:
-                st.markdown(f'<div class="model-info">', unsafe_allow_html=True)
-                st.write(f"**Model:** {selected_model_info['name']}")
-                if selected_model_info.get('size'):
-                    st.write(f"**Size:** {selected_model_info['size'] / (1024 ** 3):.1f} GB")
-                st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.error("No models available. Please ensure Ollama is running and has models installed.")
-
-            # Option to pull llama3.2:latest
-            st.subheader("📥 Pull Model")
-            if st.button("Pull llama3.2:latest"):
-                with st.spinner("Pulling model... This may take several minutes."):
-                    if pull_model("llama3.2:latest"):
-                        st.success("Model pulled successfully!")
-                        st.rerun()
-                    else:
-                        st.error("Failed to pull model.")
-
-        # File upload section
-        st.markdown('<div class="section-header">📁 File Upload</div>', unsafe_allow_html=True)
-
-        with st.container():
-            st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-
-            uploaded_file = st.file_uploader(
-                "Choose a file to upload",
-                type=['txt', 'pdf', 'md', 'docx'],
-                help="Upload documents to add to the knowledge base"
-            )
-
-            if uploaded_file is not None:
-                if st.button("📤 Upload File"):
-                    with st.spinner("Uploading and processing file..."):
-                        result = upload_file(uploaded_file, selected_model if 'selected_model' in locals() else "")
-
-                        if "error" in result:
-                            st.error(result["error"])
-                        else:
-                            st.success(f"✅ File uploaded successfully!")
-                            st.success(f"**File ID:** {result['file_id']}")
-                            st.success(f"**Chunks created:** {result['chunk_count']}")
-                            time.sleep(1)
-                            st.rerun()
-
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        # Uploaded files management
-        st.markdown('<div class="section-header">📋 Uploaded Files</div>', unsafe_allow_html=True)
-
-        uploaded_files = get_uploaded_files()
-
-        if uploaded_files:
-            for file in uploaded_files:
-                with st.expander(f"📄 {file['filename']}"):
-                    st.write(f"**File ID:** {file['id']}")
-                    st.write(f"**Upload Date:** {file['upload_date']}")
-                    st.write(f"**Size:** {file['file_size']} bytes")
-                    st.write(f"**Chunks:** {file['chunk_count']}")
-
-                    if st.button(f"🗑️ Delete", key=f"delete_{file['id']}"):
-                        if delete_file(file['id']):
-                            st.success("File deleted successfully!")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete file.")
-        else:
-            st.info("No files uploaded yet.")
-
-    with col2:
-        # Question and answer section
-        st.markdown('<div class="section-header">❓ Ask Questions</div>', unsafe_allow_html=True)
-
-        with st.container():
-            st.markdown('<div class="question-section">', unsafe_allow_html=True)
-
-            # Question input
-            question = st.text_area(
-                "What would you like to know?",
-                placeholder="Enter your question here...",
-                height=100,
-                help="Ask questions about your uploaded documents"
-            )
-
-            col_ask, col_clear = st.columns([3, 1])
-
-            with col_ask:
-                ask_button = st.button("🔍 Ask Question", type="primary")
-
-            with col_clear:
-                if st.button("🗑️ Clear Chat"):
-                    st.session_state.chat_history = []
+    if st.button("Pull Model", key="pull_model_btn"):
+        if model_to_pull:
+            with st.spinner(f"Pulling {model_to_pull}... This may take several minutes."):
+                success, result = pull_ollama_model(model_to_pull)
+                if success:
+                    st.success(f"✅ Model {model_to_pull} pulled successfully!")
                     st.rerun()
-
-            if ask_button and question.strip():
-                if not uploaded_files:
-                    st.warning("Please upload some documents first!")
                 else:
-                    with st.spinner("Searching for answers..."):
-                        result = ask_question(question.strip(), max_results)
+                    st.error(f"❌ Failed to pull model: {result}")
+        else:
+            st.warning("Please enter a model name")
 
-                        if "error" in result:
-                            st.error(result["error"])
-                        else:
-                            # Add to chat history
-                            st.session_state.chat_history.append({
-                                "question": question.strip(),
-                                "answer": result["answer"],
-                                "sources": result["sources"]
-                            })
-                            st.rerun()
+# Main content area
+col1, col2 = st.columns([2, 1])
 
-            st.markdown('</div>', unsafe_allow_html=True)
+with col1:
+    st.header("💬 Chat with Your Documents")
 
-        # Chat history
-        if st.session_state.chat_history:
-            st.markdown('<div class="section-header">💬 Chat History</div>', unsafe_allow_html=True)
+    # Chat interface
+    chat_container = st.container()
 
-            for i, chat in enumerate(reversed(st.session_state.chat_history)):
-                with st.expander(
-                        f"Q: {chat['question'][:50]}..." if len(chat['question']) > 50 else f"Q: {chat['question']}",
-                        expanded=(i == 0)):
-                    st.markdown(f"**Question:** {chat['question']}")
-                    st.markdown(f"**Answer:** {chat['answer']}")
+    with chat_container:
+        # Display chat messages
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
 
-                    if chat['sources']:
-                        st.markdown("**Sources:**")
-                        for source in chat['sources']:
-                            st.markdown(f"- 📄 {source}")
+                if message["role"] == "assistant" and "sources" in message:
+                    st.write("**Sources:**")
+                    for source in message["sources"]:
+                        st.markdown(f'<span class="source-tag">📄 {source}</span>', unsafe_allow_html=True)
+
+                    if "confidence" in message:
+                        st.markdown(f'<div class="confidence-score">Confidence: {message["confidence"]:.2%}</div>',
+                                    unsafe_allow_html=True)
+
+    # Chat input
+    if prompt := st.chat_input("Ask a question about your documents..."):
+        # Add user message
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        with st.chat_message("user"):
+            st.write(prompt)
+
+        # Get response from API
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                success, response = ask_question_to_api(prompt)
+
+                if success:
+                    st.write(response["answer"])
+
+                    # Store assistant message with metadata
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": response["answer"],
+                        "sources": response["sources"],
+                        "confidence": response["confidence"]
+                    })
+
+                    # Display sources
+                    if response["sources"]:
+                        st.write("**Sources:**")
+                        for source in response["sources"]:
+                            st.markdown(f'<span class="source-tag">📄 {source}</span>', unsafe_allow_html=True)
+
+                    # Display confidence
+                    st.markdown(f'<div class="confidence-score">Confidence: {response["confidence"]:.2%}</div>',
+                                unsafe_allow_html=True)
+                else:
+                    error_msg = f"❌ Error: {response}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
+with col2:
+    st.header("📁 Document Management")
+
+    # File upload
+    st.subheader("Upload New Document")
+    uploaded_file = st.file_uploader(
+        "Choose a file",
+        type=['txt', 'pdf', 'md', 'docx'],
+        help="Supported formats: TXT, PDF, MD, DOCX"
+    )
+
+    if uploaded_file is not None:
+        file_details = {
+            "filename": uploaded_file.name,
+            "size": uploaded_file.size,
+            "type": uploaded_file.type
+        }
+
+        st.write("**File Details:**")
+        st.json(file_details)
+
+        if st.button("Upload Document", key="upload_btn"):
+            with st.spinner("Uploading and processing document..."):
+                success, result = upload_file_to_api(uploaded_file.read(), uploaded_file.name)
+
+                if success:
+                    st.success(f"✅ Document uploaded successfully!")
+                    st.write(f"**File ID:** {result['file_id']}")
+                    st.write(f"**Chunks created:** {result['chunk_count']}")
+                    st.write(f"**File size:** {format_file_size(result['file_size'])}")
+
+                    # Refresh the file list
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"❌ Upload failed: {result}")
+
+    st.divider()
+
+    # File list
+    st.subheader("📚 Uploaded Documents")
+
+    # Refresh button
+    if st.button("🔄 Refresh List", key="refresh_btn"):
+        st.rerun()
+
+    # Get files from API
+    files_success, files_data = get_files_from_api()
+
+    if files_success and files_data:
+        for file_info in files_data:
+            with st.expander(f"📄 {file_info['filename']}", expanded=False):
+                st.write(f"**File ID:** {file_info['id']}")
+                st.write(f"**Size:** {format_file_size(file_info['file_size'])}")
+                st.write(f"**Upload Date:** {file_info['upload_date']}")
+                st.write(f"**Chunks:** {file_info['chunk_count']}")
+
+                # Delete button
+                if st.button(f"🗑️ Delete", key=f"delete_{file_info['id']}", type="secondary"):
+                    if st.session_state.get(f"confirm_delete_{file_info['id']}", False):
+                        with st.spinner("Deleting file..."):
+                            success, result = delete_file_from_api(file_info['id'])
+
+                            if success:
+                                st.success("✅ File deleted successfully!")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Delete failed: {result}")
                     else:
-                        st.markdown("**Sources:** No sources found")
+                        st.session_state[f"confirm_delete_{file_info['id']}"] = True
+                        st.warning("⚠️ Click delete again to confirm")
 
+    elif files_success:
+        st.info("📭 No documents uploaded yet")
+    else:
+        st.error(f"❌ Error loading files: {files_data}")
 
-if __name__ == "__main__":
-    main()
+# Footer
+st.divider()
+st.markdown("---")
+st.markdown(
+    """
+    <div style="text-align: center; color: #666; font-size: 0.9rem;">
+        <p>Simple RAG System • Built with Streamlit & FastAPI</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# Clear chat button
+if st.session_state.messages:
+    if st.button("🗑️ Clear Chat History", key="clear_chat", type="secondary"):
+        st.session_state.messages = []
+        st.rerun()
