@@ -1,0 +1,200 @@
+[MASTER]
+# Use multiple processes to speed up Pylint
+jobs = 0
+
+# Add files or directories to the blacklist
+ignore =
+    CVS,
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .mypy_cache,
+    .tox,
+    venv,
+    .venv,
+    env,
+    .env,
+    build,
+    dist,
+    *.egg-info,
+    migrations
+
+# Add files or directories matching the regex patterns to the blacklist
+ignore-patterns =
+    .*_pb2\.py,
+    .*_pb2_grpc\.py
+
+[MESSAGES CONTROL]
+# Disable specific warnings and errors
+disable =
+    # Too many arguments, locals, etc. (often unavoidable)
+    too-many-arguments,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-instance-attributes,
+    too-few-public-methods,
+
+    # Import related (handled by other tools)
+    import-error,
+    import-outside-toplevel,
+
+    # Docstring requirements (can be too strict)
+    missing-docstring,
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+
+    # Line length (handled by Black)
+    line-too-long,
+
+    # String formatting (personal preference)
+    consider-using-f-string,
+
+    # Logging format (can be too strict)
+    logging-format-interpolation,
+    logging-fstring-interpolation,
+
+    # Broad exception catching (sometimes necessary)
+    broad-except,
+
+    # Attribute access (can be too strict for dynamic code)
+    no-member,
+
+    # Unused variables (handled by flake8)
+    unused-argument,
+    unused-variable,
+
+[REPORTS]
+# Set the output format
+output-format = text
+
+# Include message's id in output
+include-ids = yes
+
+# Template used to display messages
+msg-template = {path}:{line}:{column}: {msg_id}: {msg} ({symbol})
+
+# Tells whether to display a full report or only the messages
+reports = no
+
+# Tells whether to display score
+score = yes
+
+[REFACTORING]
+# Maximum number of nested blocks for function / method body
+max-nested-blocks = 5
+
+[BASIC]
+# Naming style matching correct variable names
+variable-rgx = [a-z_][a-z0-9_]{2,30}$
+
+# Naming style matching correct function names
+function-rgx = [a-z_][a-z0-9_]{2,30}$
+
+# Naming style matching correct method names
+method-rgx = [a-z_][a-z0-9_]{2,30}$
+
+# Naming style matching correct class names
+class-rgx = [A-Z_][a-zA-Z0-9]+$
+
+# Naming style matching correct module names
+module-rgx = (([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
+
+# Naming style matching correct constant names
+const-rgx = (([A-Z_][A-Z0-9_]*)|(__.*__))$
+
+# Good variable names which should always be accepted
+good-names = i, j, k, ex, Run, _, id, pk, db, df, ax, fig
+
+[FORMAT]
+# Maximum number of characters on a single line (matches Black)
+max-line-length = 88
+
+# Maximum number of lines in a module
+max-module-lines = 1000
+
+# String used as indentation unit
+indent-string = '    '
+
+[SIMILARITIES]
+# Minimum lines number of a similarity
+min-similarity-lines = 4
+
+# Ignore comments when computing similarities
+ignore-comments = yes
+
+# Ignore docstrings when computing similarities
+ignore-docstrings = yes
+
+# Ignore imports when computing similarities
+ignore-imports = no
+
+[TYPECHECK]
+# List of members which are set dynamically and missed by Pylint inference
+generated-members =
+    numpy.*,
+    torch.*,
+    cv2.*,
+
+# List of classes names for which member attributes should not be checked
+ignored-classes =
+    SQLObject,
+    optparse.Values,
+    thread._local,
+    _thread._local
+
+[VARIABLES]
+# Tells whether we should check for unused import in __init__ files
+init-import = no
+
+# A regular expression matching the name of dummy variables
+dummy-variables-rgx = _+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_
+
+[CLASSES]
+# List of method names used to declare (i.e. assign) instance attributes
+defining-attr-methods =
+    __init__,
+    __new__,
+    setUp,
+    __post_init__
+
+# List of valid names for the first argument in a class method
+valid-classmethod-first-arg = cls
+
+# List of valid names for the first argument in a metaclass class method
+valid-metaclass-classmethod-first-arg = mcs
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args = 10
+
+# Maximum number of locals for function / method body
+max-locals = 25
+
+# Maximum number of return / yield for function / method body
+max-returns = 10
+
+# Maximum number of branch for function / method body
+max-branches = 20
+
+# Maximum number of statements in function / method body
+max-statements = 80
+
+# Maximum number of parents for a class
+max-parents = 7
+
+# Maximum number of attributes for a class
+max-attributes = 15
+
+# Minimum number of public methods for a class
+min-public-methods = 1
+
+# Maximum number of public methods for a class
+max-public-methods = 30
+
+[EXCEPTIONS]
+# Exceptions that will emit a warning when being caught
+overgeneral-exceptions =
+    BaseException,
+    Exception

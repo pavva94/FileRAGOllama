@@ -30,7 +30,7 @@ jobs:
           VALIDATE_ALL_CODEBASE: false
 
           # GitHub token for API access
-          GITHUB_TOKEN: ${{ secrets.FULL_ACCESS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
           # Enable specific linters for Python and Docker
           VALIDATE_PYTHON_BLACK: true
@@ -47,9 +47,9 @@ jobs:
           VALIDATE_BASH: true
           VALIDATE_SHELL_SHFMT: true
 
-          # Disable linters you don't need (optional)
-          VALIDATE_JSCPD: false
-          VALIDATE_NATURAL_LANGUAGE: false
+          # Additional Python linter options
+          VALIDATE_PYTHON_ISORT: true
+          VALIDATE_PYTHON_BANDIT: true
 
           # Set the default branch
           DEFAULT_BRANCH: main
@@ -60,11 +60,12 @@ jobs:
           # Filter regex for files to exclude (optional)
           # FILTER_REGEX_EXCLUDE: '.*\.md$'
 
-          # Python specific configurations
-          PYTHON_BLACK_CONFIG_FILE: .black
+          # Python specific configurations (Super Linter auto-detects these files)
+          PYTHON_BLACK_CONFIG_FILE: pyproject.toml
           PYTHON_FLAKE8_CONFIG_FILE: .flake8
           PYTHON_PYLINT_CONFIG_FILE: .pylintrc
           PYTHON_MYPY_CONFIG_FILE: mypy.ini
+
 
           # Log level (VERBOSE, DEBUG, INFO, WARN, ERROR, FATAL)
           LOG_LEVEL: INFO
