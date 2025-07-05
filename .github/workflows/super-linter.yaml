@@ -56,14 +56,5 @@ jobs:
           # Fail fast on first error (optional)
           FAIL_FAST: false
 
-          # Filter regex for files to exclude (optional)
-          # FILTER_REGEX_EXCLUDE: '.*\.md$'
-
-          # Python specific configurations (Super Linter auto-detects these files)
-          PYTHON_FLAKE8_CONFIG_FILE: .flake8
-          PYTHON_PYLINT_CONFIG_FILE: .pylintrc
-          PYTHON_MYPY_CONFIG_FILE: mypy.ini
-
-
           # Log level (VERBOSE, DEBUG, INFO, WARN, ERROR, FATAL)
           LOG_LEVEL: INFO
