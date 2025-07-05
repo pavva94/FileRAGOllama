@@ -30,7 +30,7 @@ jobs:
           VALIDATE_ALL_CODEBASE: false
 
           # GitHub token for API access
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.FULL_ACCESS }}
 
           # Enable specific linters for Python and Docker
           VALIDATE_PYTHON_BLACK: true
