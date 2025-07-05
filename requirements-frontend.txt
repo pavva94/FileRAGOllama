@@ -1,0 +1,7 @@
+# Streamlit and web framework
+streamlit
+requests
+
+# Utilities
+python-dotenv
+pathlib

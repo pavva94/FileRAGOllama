@@ -1,0 +1,67 @@
+[flake8]
+# Maximum line length (matches Black)
+max-line-length = 88
+
+# Maximum complexity score
+max-complexity = 10
+
+# Error codes to ignore
+ignore =
+    # E203: whitespace before ':' (conflicts with Black)
+    E203,
+    # E501: line too long (handled by Black)
+    E501,
+    # W503: line break before binary operator (conflicts with Black)
+    W503,
+    # E722: do not use bare except (too strict for some cases)
+    # E722,
+
+# Error codes to always report
+select =
+    E,
+    W,
+    F,
+    C
+
+# Directories to exclude
+exclude =
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .mypy_cache,
+    .tox,
+    venv,
+    .venv,
+    env,
+    .env,
+    build,
+    dist,
+    *.egg-info,
+    migrations,
+    .eggs,
+    docs/_build
+
+# Files to exclude
+per-file-ignores =
+    # Allow unused imports in __init__.py files
+    __init__.py:F401,
+    # Allow star imports in __init__.py files
+    __init__.py:F403,
+    # Allow unused variables in test files
+    test_*.py:F841,
+    tests/*.py:F841,
+    # Allow long lines in settings/config files
+    settings.py:E501,
+    config.py:E501
+
+# Show source code for each error
+show-source = true
+
+# Show pep8 code for each error
+show-pep8 = true
+
+# Count errors
+count = true
+
+# Statistics
+statistics = true

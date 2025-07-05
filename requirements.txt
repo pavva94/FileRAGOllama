@@ -1,25 +1,33 @@
-# Core dependencies
+# FastAPI and web framework
 fastapi
 uvicorn
-streamlit
 python-multipart
 
-# RAG system dependencies
+# Database
+sqlalchemy
+databases[postgresql]
+asyncpg
+psycopg2-binary
+
+# Azure services
+azure-storage-blob
+azure-identity
+azure-core
+
+# Google Gemini
+google-generativeai
+
+# Machine Learning / Embeddings
 sentence-transformers
 numpy
+scipy
 
 # Document processing
 PyPDF2
 python-docx
-markdown
+python-magic
 
-# HTTP requests
-requests
-
-# Optional: For better text processing
-nltk
-spacy
-
-# For development
-pytest
-black
+# Utilities
+pydantic
+python-dotenv
+pathlib

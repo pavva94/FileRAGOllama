@@ -1,0 +1,69 @@
+name: Super Linter
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  super-lint:
+    name: Lint Code Base
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: read
+      statuses: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # Full git history is needed to get a proper list of changed files
+          fetch-depth: 0
+          # Ensure we're on the correct branch, not detached HEAD
+          ref: ${{ github.head_ref || github.ref }}
+
+      - name: Run Super Linter
+        uses: super-linter/super-linter@v5
+        env:
+          # Set to true to validate all files, false to validate only changed files
+          VALIDATE_ALL_CODEBASE: true
+
+          # GitHub token for API access
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Enable specific linters for Python and Docker
+          VALIDATE_PYTHON_BLACK: true
+          VALIDATE_PYTHON_FLAKE8: true
+          VALIDATE_PYTHON_PYLINT: true
+          VALIDATE_PYTHON_MYPY: true
+          VALIDATE_DOCKERFILE_HADOLINT: true
+          VALIDATE_DOCKER_COMPOSE: true
+
+          # Enable additional useful linters
+          VALIDATE_YAML: true
+          VALIDATE_JSON: true
+          VALIDATE_MARKDOWN: true
+          VALIDATE_BASH: true
+          VALIDATE_SHELL_SHFMT: true
+
+          # Additional Python linter options
+          VALIDATE_PYTHON_ISORT: true
+          VALIDATE_PYTHON_BANDIT: true
+
+          # Set the default branch (use develop since that's your main branch)
+          DEFAULT_BRANCH: develop
+
+          # Set the default workspace
+          DEFAULT_WORKSPACE: /tmp/lint
+
+          # Fail fast on first error (optional)
+          FAIL_FAST: false
+
+          # Filter regex for files to exclude (optional)
+          # FILTER_REGEX_EXCLUDE: '.*\.md$'
+
+          # Log level (VERBOSE, DEBUG, INFO, WARN, ERROR, FATAL)
+          LOG_LEVEL: INFO
