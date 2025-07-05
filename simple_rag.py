@@ -1,431 +1,448 @@
-import sqlite3
 import os
 import json
 import uuid
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
-import hashlib
-import pickle
 from pathlib import Path
-
-# For text processing
-import re
-from dataclasses import dataclass
-import numpy as np
-from sentence_transformers import SentenceTransformer
+from typing import List, Dict, Optional, Any
+import tempfile
+import shutil
 
 # Document processing
 import PyPDF2
-from docx import Document as DocxDocument
-import markdown
+import docx
+from markdown import markdown
+from bs4 import BeautifulSoup
 
+# ML/NLP libraries
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import nltk
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
+import re
 
-@dataclass
-class DocumentChunk:
-    id: str
-    file_id: str
-    content: str
-    embedding: np.ndarray
-    metadata: Dict
-    chunk_index: int
+# Updated import for huggingface_hub compatibility
+try:
+    from huggingface_hub import hf_hub_download
+
+    HF_HUB_AVAILABLE = True
+except ImportError:
+    HF_HUB_AVAILABLE = False
+
+# Try to import sentence transformers for better embeddings
+try:
+    from sentence_transformers import SentenceTransformer
+
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+
+# Download required NLTK data
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords')
 
 
 class SimpleRAG:
-    def __init__(self, data_dir: str = "rag_data"):
+    def __init__(self, data_dir: str = "data"):
+        """Initialize the RAG system"""
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
 
-        # Initialize directories
-        self.files_dir = self.data_dir / "files"
-        self.embeddings_dir = self.data_dir / "embeddings"
-        self.files_dir.mkdir(exist_ok=True)
-        self.embeddings_dir.mkdir(exist_ok=True)
+        # Initialize components
+        self.vectorizer = TfidfVectorizer(
+            max_features=5000,
+            stop_words='english',
+            ngram_range=(1, 2)
+        )
 
-        # Initialize SQLite database
-        self.db_path = self.data_dir / "rag.db"
-        self.init_database()
+        # Try to load a sentence transformer model if available
+        self.sentence_model = None
+        if SENTENCE_TRANSFORMERS_AVAILABLE:
+            try:
+                self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+                print("✅ Loaded SentenceTransformer model")
+            except Exception as e:
+                print(f"⚠️ Could not load SentenceTransformer: {e}")
 
-        # Initialize embedding model
-        print("Loading embedding model...")
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.embedding_dim = 384  # Dimension for all-MiniLM-L6-v2
+        # Storage
+        self.chunks = []
+        self.embeddings = None
+        self.file_metadata = {}
 
-        print("RAG system initialized!")
+        # Load existing data
+        self._load_data()
 
-    def init_database(self):
-        """Initialize SQLite database with required tables"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    def _load_data(self):
+        """Load existing data from disk"""
+        try:
+            # Load chunks
+            chunks_file = self.data_dir / "chunks.json"
+            if chunks_file.exists():
+                with open(chunks_file, 'r', encoding='utf-8') as f:
+                    self.chunks = json.load(f)
 
-        # Files table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS files (
-                id TEXT PRIMARY KEY,
-                filename TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                file_size INTEGER NOT NULL,
-                upload_date TEXT NOT NULL,
-                content_hash TEXT NOT NULL,
-                chunk_count INTEGER DEFAULT 0
-            )
-        """)
+            # Load file metadata
+            metadata_file = self.data_dir / "metadata.json"
+            if metadata_file.exists():
+                with open(metadata_file, 'r', encoding='utf-8') as f:
+                    self.file_metadata = json.load(f)
 
-        # Chunks table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS chunks (
-                id TEXT PRIMARY KEY,
-                file_id TEXT NOT NULL,
-                chunk_index INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                embedding_path TEXT NOT NULL,
-                metadata TEXT,
-                FOREIGN KEY (file_id) REFERENCES files (id)
-            )
-        """)
+            # Rebuild embeddings if we have chunks
+            if self.chunks:
+                self._rebuild_embeddings()
 
-        conn.commit()
-        conn.close()
+            print(f"✅ Loaded {len(self.chunks)} chunks from {len(self.file_metadata)} files")
 
-    def extract_text_from_file(self, file_path: Path) -> str:
+        except Exception as e:
+            print(f"⚠️ Error loading data: {e}")
+            # Reset data if loading fails
+            self.chunks = []
+            self.embeddings = None
+            self.file_metadata = {}
+
+    def _save_data(self):
+        """Save data to disk"""
+        try:
+            # Save chunks
+            chunks_file = self.data_dir / "chunks.json"
+            with open(chunks_file, 'w', encoding='utf-8') as f:
+                json.dump(self.chunks, f, indent=2, ensure_ascii=False)
+
+            # Save file metadata
+            metadata_file = self.data_dir / "metadata.json"
+            with open(metadata_file, 'w', encoding='utf-8') as f:
+                json.dump(self.file_metadata, f, indent=2, ensure_ascii=False)
+
+            print("✅ Data saved successfully")
+
+        except Exception as e:
+            print(f"❌ Error saving data: {e}")
+
+    def _extract_text_from_file(self, file_path: str) -> str:
         """Extract text from various file formats"""
-        file_extension = file_path.suffix.lower()
+        file_path = Path(file_path)
+        extension = file_path.suffix.lower()
 
-        if file_extension == '.txt':
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
+        try:
+            if extension == '.txt':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    return f.read()
 
-        elif file_extension == '.pdf':
-            text = ""
-            with open(file_path, 'rb') as f:
-                pdf_reader = PyPDF2.PdfReader(f)
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-            return text
+            elif extension == '.pdf':
+                text = ""
+                with open(file_path, 'rb') as f:
+                    pdf_reader = PyPDF2.PdfReader(f)
+                    for page in pdf_reader.pages:
+                        text += page.extract_text() + "\n"
+                return text
 
-        elif file_extension == '.docx':
-            doc = DocxDocument(file_path)
-            text = ""
-            for paragraph in doc.paragraphs:
-                text += paragraph.text + "\n"
-            return text
+            elif extension == '.docx':
+                doc = docx.Document(file_path)
+                text = ""
+                for paragraph in doc.paragraphs:
+                    text += paragraph.text + "\n"
+                return text
 
-        elif file_extension == '.md':
-            with open(file_path, 'r', encoding='utf-8') as f:
-                md_content = f.read()
-            # Convert markdown to plain text (basic conversion)
-            html = markdown.markdown(md_content)
-            text = re.sub(r'<[^>]+>', '', html)
-            return text
+            elif extension == '.md':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    md_content = f.read()
+                    html = markdown(md_content)
+                    soup = BeautifulSoup(html, 'html.parser')
+                    return soup.get_text()
 
-        else:
-            raise ValueError(f"Unsupported file format: {file_extension}")
+            else:
+                raise ValueError(f"Unsupported file format: {extension}")
 
-    def chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
+        except Exception as e:
+            raise Exception(f"Error extracting text from {file_path}: {str(e)}")
+
+    def _chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
         """Split text into overlapping chunks"""
-        words = text.split()
-        chunks = []
+        # Clean text
+        text = re.sub(r'\s+', ' ', text).strip()
 
-        for i in range(0, len(words), chunk_size - overlap):
-            chunk = " ".join(words[i:i + chunk_size])
-            if chunk.strip():
-                chunks.append(chunk.strip())
+        # Split into sentences
+        sentences = sent_tokenize(text)
+
+        chunks = []
+        current_chunk = ""
+        current_length = 0
+
+        for sentence in sentences:
+            sentence_length = len(sentence.split())
+
+            # If adding this sentence would exceed chunk size
+            if current_length + sentence_length > chunk_size and current_chunk:
+                chunks.append(current_chunk.strip())
+
+                # Create overlap
+                overlap_text = " ".join(current_chunk.split()[-overlap:])
+                current_chunk = overlap_text + " " + sentence
+                current_length = len(current_chunk.split())
+            else:
+                current_chunk += " " + sentence
+                current_length += sentence_length
+
+        # Add the last chunk
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
 
         return chunks
 
-    def upload_file(self, file_path: str, filename: str = None) -> Dict:
-        """Upload and process a file"""
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        if filename is None:
-            filename = file_path.name
-
-        # Generate file ID
-        file_id = str(uuid.uuid4())
-
-        # Calculate file hash
-        with open(file_path, 'rb') as f:
-            file_hash = hashlib.md5(f.read()).hexdigest()
-
-        # Check if file already exists
-        if self.file_exists(file_hash):
-            raise ValueError("File already exists in the system")
-
-        # Copy file to storage
-        stored_file_path = self.files_dir / f"{file_id}_{filename}"
-        with open(file_path, 'rb') as src, open(stored_file_path, 'wb') as dst:
-            dst.write(src.read())
-
-        # Extract text
-        try:
-            text = self.extract_text_from_file(file_path)
-        except Exception as e:
-            # Clean up if text extraction fails
-            stored_file_path.unlink()
-            raise e
-
-        # Create chunks
-        chunks = self.chunk_text(text)
-
-        # Generate embeddings and store chunks
-        chunk_objects = []
-        for i, chunk_text in enumerate(chunks):
-            chunk_id = str(uuid.uuid4())
-
-            # Generate embedding
-            embedding = self.embedding_model.encode(chunk_text)
-
-            # Save embedding
-            embedding_path = self.embeddings_dir / f"{chunk_id}.pkl"
-            with open(embedding_path, 'wb') as f:
-                pickle.dump(embedding, f)
-
-            # Create chunk object
-            chunk_obj = DocumentChunk(
-                id=chunk_id,
-                file_id=file_id,
-                content=chunk_text,
-                embedding=embedding,
-                metadata={"filename": filename, "chunk_index": i},
-                chunk_index=i
-            )
-            chunk_objects.append(chunk_obj)
-
-        # Store in database
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # Insert file record
-        cursor.execute("""
-            INSERT INTO files (id, filename, file_path, file_size, upload_date, content_hash, chunk_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            file_id, filename, str(stored_file_path), file_path.stat().st_size,
-            datetime.now().isoformat(), file_hash, len(chunks)
-        ))
-
-        # Insert chunk records
-        for chunk in chunk_objects:
-            cursor.execute("""
-                INSERT INTO chunks (id, file_id, chunk_index, content, embedding_path, metadata)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                chunk.id, chunk.file_id, chunk.chunk_index, chunk.content,
-                str(self.embeddings_dir / f"{chunk.id}.pkl"), json.dumps(chunk.metadata)
-            ))
-
-        conn.commit()
-        conn.close()
-
-        return {
-            "file_id": file_id,
-            "filename": filename,
-            "chunk_count": len(chunks),
-            "file_size": file_path.stat().st_size
-        }
-
-    def file_exists(self, content_hash: str) -> bool:
-        """Check if file with given hash already exists"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT id FROM files WHERE content_hash = ?", (content_hash,))
-        result = cursor.fetchone()
-
-        conn.close()
-        return result is not None
-
-    def get_files(self) -> List[Dict]:
-        """Get list of all uploaded files"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT id, filename, file_size, upload_date, chunk_count
-            FROM files
-            ORDER BY upload_date DESC
-        """)
-
-        files = []
-        for row in cursor.fetchall():
-            files.append({
-                "id": row[0],
-                "filename": row[1],
-                "file_size": row[2],
-                "upload_date": row[3],
-                "chunk_count": row[4]
-            })
-
-        conn.close()
-        return files
-
-    def delete_file(self, file_id: str) -> bool:
-        """Delete a file and all its chunks"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # Get file info
-        cursor.execute("SELECT file_path FROM files WHERE id = ?", (file_id,))
-        file_info = cursor.fetchone()
-
-        if not file_info:
-            conn.close()
-            return False
-
-        # Get chunk embedding paths
-        cursor.execute("SELECT embedding_path FROM chunks WHERE file_id = ?", (file_id,))
-        embedding_paths = [row[0] for row in cursor.fetchall()]
-
-        # Delete from database
-        cursor.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
-        cursor.execute("DELETE FROM files WHERE id = ?", (file_id,))
-
-        conn.commit()
-        conn.close()
-
-        # Delete files
-        try:
-            # Delete stored file
-            file_path = Path(file_info[0])
-            if file_path.exists():
-                file_path.unlink()
-
-            # Delete embeddings
-            for embedding_path in embedding_paths:
-                embedding_file = Path(embedding_path)
-                if embedding_file.exists():
-                    embedding_file.unlink()
-        except Exception as e:
-            print(f"Error deleting files: {e}")
-            return False
-
-        return True
-
-    def cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        """Calculate cosine similarity between two vectors"""
-        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-    def search_similar_chunks(self, query: str, max_results: int = 5) -> List[Tuple[str, float, Dict]]:
-        """Search for chunks similar to the query"""
-        # Generate query embedding
-        query_embedding = self.embedding_model.encode(query)
-
-        # Get all chunks
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT c.id, c.content, c.embedding_path, c.metadata, f.filename
-            FROM chunks c
-            JOIN files f ON c.file_id = f.id
-        """)
-
-        chunks = cursor.fetchall()
-        conn.close()
-
-        # Calculate similarities
-        similarities = []
-        for chunk in chunks:
-            chunk_id, content, embedding_path, metadata_json, filename = chunk
-
-            # Load embedding
+    def _create_embeddings(self, texts: List[str]) -> np.ndarray:
+        """Create embeddings for texts"""
+        if self.sentence_model:
+            # Use sentence transformers if available
             try:
-                with open(embedding_path, 'rb') as f:
-                    chunk_embedding = pickle.load(f)
-
-                # Calculate similarity
-                similarity = self.cosine_similarity(query_embedding, chunk_embedding)
-
-                metadata = json.loads(metadata_json)
-                metadata['filename'] = filename
-
-                similarities.append((content, similarity, metadata))
+                embeddings = self.sentence_model.encode(texts)
+                return embeddings
             except Exception as e:
-                print(f"Error loading embedding for chunk {chunk_id}: {e}")
-                continue
+                print(f"⚠️ Error with SentenceTransformer: {e}, falling back to TF-IDF")
 
-        # Sort by similarity and return top results
-        similarities.sort(key=lambda x: x[1], reverse=True)
-        return similarities[:max_results]
+        # Fallback to TF-IDF
+        if len(texts) == 1:
+            # For single text, we need to fit_transform on existing corpus
+            all_texts = [chunk['text'] for chunk in self.chunks] + texts
+            embeddings = self.vectorizer.fit_transform(all_texts)
+            return embeddings[-1:].toarray()  # Return only the new embedding
+        else:
+            # For multiple texts
+            embeddings = self.vectorizer.fit_transform(texts)
+            return embeddings.toarray()
 
-    def generate_answer(self, query: str, max_results: int = 5) -> Dict:
-        """Generate answer using retrieved chunks"""
-        # Get similar chunks
-        similar_chunks = self.search_similar_chunks(query, max_results)
+    def _rebuild_embeddings(self):
+        """Rebuild embeddings for all chunks"""
+        if not self.chunks:
+            return
 
-        if not similar_chunks:
-            return {
-                "answer": "I couldn't find any relevant information to answer your question.",
-                "sources": [],
-                "confidence": 0.0
+        texts = [chunk['text'] for chunk in self.chunks]
+
+        try:
+            if self.sentence_model:
+                self.embeddings = self.sentence_model.encode(texts)
+            else:
+                self.embeddings = self.vectorizer.fit_transform(texts).toarray()
+
+            print(f"✅ Rebuilt embeddings for {len(texts)} chunks")
+
+        except Exception as e:
+            print(f"❌ Error rebuilding embeddings: {e}")
+
+    def upload_file(self, file_path: str, original_filename: str = None) -> Dict[str, Any]:
+        """Upload and process a file"""
+        try:
+            # Extract text
+            text = self._extract_text_from_file(file_path)
+
+            if not text.strip():
+                raise ValueError("No text content found in file")
+
+            # Generate file ID
+            file_id = str(uuid.uuid4())
+
+            # Create chunks
+            chunks = self._chunk_text(text)
+
+            # Store file metadata
+            filename = original_filename or Path(file_path).name
+            file_size = Path(file_path).stat().st_size
+
+            self.file_metadata[file_id] = {
+                'id': file_id,
+                'filename': filename,
+                'file_size': file_size,
+                'upload_date': datetime.now().isoformat(),
+                'chunk_count': len(chunks)
             }
 
-        # Simple answer generation (you can integrate with Ollama here)
-        context = "\n\n".join([chunk[0] for chunk in similar_chunks])
+            # Add chunks to storage
+            chunk_start_idx = len(self.chunks)
+            for i, chunk_text in enumerate(chunks):
+                chunk = {
+                    'id': f"{file_id}_{i}",
+                    'file_id': file_id,
+                    'text': chunk_text,
+                    'filename': filename,
+                    'chunk_index': i
+                }
+                self.chunks.append(chunk)
 
-        # For now, return the most relevant chunk as the answer
-        # You can replace this with actual LLM generation
-        best_chunk = similar_chunks[0]
+            # Update embeddings
+            self._rebuild_embeddings()
 
-        answer = f"Based on the documents, here's what I found:\n\n{best_chunk[0]}"
+            # Save data
+            self._save_data()
 
-        sources = list(set([chunk[2]['filename'] for chunk in similar_chunks]))
-        confidence = best_chunk[1]
+            return {
+                'file_id': file_id,
+                'filename': filename,
+                'chunk_count': len(chunks),
+                'file_size': file_size
+            }
 
-        return {
-            "answer": answer,
-            "sources": sources,
-            "confidence": confidence,
-            "context": context  # You can use this for LLM prompting
-        }
+        except Exception as e:
+            raise Exception(f"Error uploading file: {str(e)}")
+
+    def get_files(self) -> List[Dict[str, Any]]:
+        """Get list of uploaded files"""
+        return list(self.file_metadata.values())
+
+    def delete_file(self, file_id: str) -> bool:
+        """Delete a file and its chunks"""
+        try:
+            if file_id not in self.file_metadata:
+                return False
+
+            # Remove chunks
+            self.chunks = [chunk for chunk in self.chunks if chunk['file_id'] != file_id]
+
+            # Remove file metadata
+            del self.file_metadata[file_id]
+
+            # Rebuild embeddings
+            self._rebuild_embeddings()
+
+            # Save data
+            self._save_data()
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Error deleting file: {e}")
+            return False
+
+    def find_similar_chunks(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        """Find chunks similar to the query"""
+        if not self.chunks or self.embeddings is None:
+            return []
+
+        try:
+            # Create query embedding
+            query_embedding = self._create_embeddings([query])
+
+            # Calculate similarities
+            if self.sentence_model:
+                similarities = cosine_similarity(query_embedding, self.embeddings)[0]
+            else:
+                query_tfidf = self.vectorizer.transform([query])
+                similarities = cosine_similarity(query_tfidf, self.embeddings)[0]
+
+            # Get top results
+            top_indices = np.argsort(similarities)[::-1][:max_results]
+
+            results = []
+            for idx in top_indices:
+                if similarities[idx] > 0.1:  # Minimum similarity threshold
+                    result = self.chunks[idx].copy()
+                    result['similarity'] = float(similarities[idx])
+                    results.append(result)
+
+            return results
+
+        except Exception as e:
+            print(f"❌ Error finding similar chunks: {e}")
+            return []
+
+    def generate_answer(self, question: str, max_results: int = 5) -> Dict[str, Any]:
+        """Generate an answer based on similar chunks"""
+        try:
+            # Find similar chunks
+            similar_chunks = self.find_similar_chunks(question, max_results)
+
+            if not similar_chunks:
+                return {
+                    'answer': "I don't have enough information to answer that question. Please upload relevant documents first.",
+                    'sources': [],
+                    'confidence': 0.0,
+                    'context': ''
+                }
+
+            # Create context from similar chunks
+            context_parts = []
+            sources = set()
+
+            for chunk in similar_chunks:
+                context_parts.append(chunk['text'])
+                sources.add(chunk['filename'])
+
+            context = '\n\n'.join(context_parts)
+
+            # Calculate confidence (average similarity)
+            avg_similarity = np.mean([chunk['similarity'] for chunk in similar_chunks])
+            confidence = float(avg_similarity)
+
+            # Generate a basic answer (this can be enhanced with LLM)
+            answer = self._generate_basic_answer(question, context, similar_chunks)
+
+            return {
+                'answer': answer,
+                'sources': list(sources),
+                'confidence': confidence,
+                'context': context
+            }
+
+        except Exception as e:
+            return {
+                'answer': f"Error generating answer: {str(e)}",
+                'sources': [],
+                'confidence': 0.0,
+                'context': ''
+            }
+
+    def _generate_basic_answer(self, question: str, context: str, chunks: List[Dict]) -> str:
+        """Generate a basic answer without LLM"""
+        # This is a simple extractive approach
+        # In a real system, you'd use an LLM here
+
+        if not chunks:
+            return "No relevant information found."
+
+        # Get the most relevant chunk
+        best_chunk = chunks[0]
+
+        # Try to find the most relevant sentences
+        sentences = sent_tokenize(best_chunk['text'])
+
+        # Simple keyword matching
+        question_words = set(word_tokenize(question.lower()))
+        question_words = question_words - set(stopwords.words('english'))
+
+        scored_sentences = []
+        for sentence in sentences:
+            sentence_words = set(word_tokenize(sentence.lower()))
+            overlap = len(question_words.intersection(sentence_words))
+            if overlap > 0:
+                scored_sentences.append((sentence, overlap))
+
+        if scored_sentences:
+            # Sort by overlap and take top sentences
+            scored_sentences.sort(key=lambda x: x[1], reverse=True)
+            top_sentences = [s[0] for s in scored_sentences[:3]]
+            return ' '.join(top_sentences)
+        else:
+            # Return first few sentences of best chunk
+            return ' '.join(sentences[:2])
 
 
-# Example usage and testing
+# Example usage
 if __name__ == "__main__":
     # Initialize RAG system
     rag = SimpleRAG()
 
-    # Example: Upload a file
-    try:
-        # Create a sample text file for testing
-        sample_text = """
-        Artificial Intelligence (AI) is a broad field of computer science focused on creating systems
-        that can perform tasks that typically require human intelligence. This includes learning,
-        reasoning, perception, and language understanding.
+    # Example file upload
+    # result = rag.upload_file("path/to/your/document.pdf")
+    # print(f"Uploaded file: {result}")
 
-        Machine Learning is a subset of AI that focuses on algorithms that can learn from data
-        without being explicitly programmed. Deep Learning is a subset of Machine Learning
-        that uses neural networks with multiple layers.
+    # Example question
+    # answer = rag.generate_answer("What is the main topic of the document?")
+    # print(f"Answer: {answer}")
 
-        Natural Language Processing (NLP) is another important area of AI that deals with
-        the interaction between computers and human language. It includes tasks like text
-        classification, sentiment analysis, and question answering.
-        """
-
-        # Save sample file
-        sample_file_path = "sample_ai_doc.txt"
-        with open(sample_file_path, 'w') as f:
-            f.write(sample_text)
-
-        # Upload file
-        result = rag.upload_file(sample_file_path)
-        print(f"File uploaded: {result}")
-
-        # Search for similar content
-        query = "What is machine learning?"
-        answer = rag.generate_answer(query)
-        print(f"\nQuery: {query}")
-        print(f"Answer: {answer['answer']}")
-        print(f"Sources: {answer['sources']}")
-        print(f"Confidence: {answer['confidence']:.3f}")
-
-        # List files
-        files = rag.get_files()
-        print(f"\nUploaded files: {files}")
-
-        # Clean up
-        os.remove(sample_file_path)
-
-    except Exception as e:
-        print(f"Error: {e}")
+    print("RAG system initialized successfully!")
