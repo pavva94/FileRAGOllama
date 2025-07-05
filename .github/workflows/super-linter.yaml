@@ -51,7 +51,7 @@ jobs:
           VALIDATE_PYTHON_BANDIT: true
 
           # Set the default branch
-          DEFAULT_BRANCH: main
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
           # Fail fast on first error (optional)
           FAIL_FAST: false
