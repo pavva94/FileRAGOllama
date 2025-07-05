@@ -144,6 +144,7 @@ uploads/
 logs/
 
 # Environment variables
+.env
 .env.template
 .env.local
 .env.development.local
