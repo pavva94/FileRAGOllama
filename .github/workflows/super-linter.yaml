@@ -1,0 +1,70 @@
+name: Super Linter
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  super-lint:
+    name: Lint Code Base
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: read
+      statuses: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # Full git history is needed to get a proper list of changed files
+          fetch-depth: 0
+
+      - name: Run Super Linter
+        uses: super-linter/super-linter@v5
+        env:
+          # Set to true to validate all files, false to validate only changed files
+          VALIDATE_ALL_CODEBASE: false
+
+          # GitHub token for API access
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Enable specific linters for Python and Docker
+          VALIDATE_PYTHON_BLACK: true
+          VALIDATE_PYTHON_FLAKE8: true
+          VALIDATE_PYTHON_PYLINT: true
+          VALIDATE_PYTHON_MYPY: true
+          VALIDATE_DOCKERFILE_HADOLINT: true
+          VALIDATE_DOCKER_COMPOSE: true
+
+          # Enable additional useful linters
+          VALIDATE_YAML: true
+          VALIDATE_JSON: true
+          VALIDATE_MARKDOWN: true
+          VALIDATE_BASH: true
+          VALIDATE_SHELL_SHFMT: true
+
+          # Disable linters you don't need (optional)
+          VALIDATE_JSCPD: false
+          VALIDATE_NATURAL_LANGUAGE: false
+
+          # Set the default branch
+          DEFAULT_BRANCH: main
+
+          # Fail fast on first error (optional)
+          FAIL_FAST: false
+
+          # Filter regex for files to exclude (optional)
+          # FILTER_REGEX_EXCLUDE: '.*\.md$'
+
+          # Python specific configurations
+          PYTHON_BLACK_CONFIG_FILE: .black
+          PYTHON_FLAKE8_CONFIG_FILE: .flake8
+          PYTHON_PYLINT_CONFIG_FILE: .pylintrc
+          PYTHON_MYPY_CONFIG_FILE: mypy.ini
+
+          # Log level (VERBOSE, DEBUG, INFO, WARN, ERROR, FATAL)
+          LOG_LEVEL: INFO
