@@ -61,7 +61,6 @@ jobs:
           # FILTER_REGEX_EXCLUDE: '.*\.md$'
 
           # Python specific configurations (Super Linter auto-detects these files)
-          PYTHON_BLACK_CONFIG_FILE: pyproject.toml
           PYTHON_FLAKE8_CONFIG_FILE: .flake8
           PYTHON_PYLINT_CONFIG_FILE: .pylintrc
           PYTHON_MYPY_CONFIG_FILE: mypy.ini
