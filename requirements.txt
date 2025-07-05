@@ -1,33 +1,33 @@
 # FastAPI and web framework
-fastapi==0.104.1
-uvicorn==0.24.0
-python-multipart==0.0.6
+fastapi
+uvicorn
+python-multipart
 
 # Database
-sqlalchemy==2.0.23
-databases[postgresql]==0.8.0
-asyncpg==0.29.0
-psycopg2-binary==2.9.9
+sqlalchemy
+databases[postgresql]
+asyncpg
+psycopg2-binary
 
 # Azure services
-azure-storage-blob==12.19.0
-azure-identity==1.15.0
-azure-core==1.29.5
+azure-storage-blob
+azure-identity
+azure-core
 
 # Google Gemini
-google-generativeai==0.3.2
+google-generativeai
 
 # Machine Learning / Embeddings
-sentence-transformers==2.2.2
-numpy==1.24.3
-scipy==1.11.4
+sentence-transformers
+numpy
+scipy
 
 # Document processing
-PyPDF2==3.0.1
-python-docx==1.1.0
-python-magic==0.4.27
+PyPDF2
+python-docx
+python-magic
 
 # Utilities
-pydantic==2.5.0
-python-dotenv==1.0.0
-pathlib==1.0.1
+pydantic
+python-dotenv
+pathlib
