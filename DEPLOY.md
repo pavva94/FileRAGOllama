@@ -92,24 +92,23 @@ docker push $ACR_LOGIN_SERVER/rag-frontend:latest
 
 ```bash
 # Configure PostgreSQL firewall
-az postgres server firewall-rule create \
+az postgres flexible-server firewall-rule create \
     --resource-group rag-system-rg \
-    --server-name rag-postgres-server \
-    --name AllowAzureServices \
+    --name rag-postgres-server \
+    --rule-name AllowAzureServices \
     --start-ip-address 0.0.0.0 \
     --end-ip-address 0.0.0.0
 
 # Get storage account connection string
-STORAGE_CONNECTION_STRING=$(az storage account show-connection-string \
-    --name ragstorage123 \
-    --resource-group rag-system-rg \
-    --query connectionString --output tsv)
+# Get storage account connection string
+$STORAGE_CONNECTION_STRING = az storage account show-connection-string --name ragstorage123 --resource-group rag-system-rg --query connectionString --output tsv
 
 # Create blob container
-az storage container create \
-    --name documents \
-    --connection-string "$STORAGE_CONNECTION_STRING" \
-    --public-access off
+az storage container create --name documents \
+  --connection-string $STORAGE_CONNECTION_STRING \
+  --public-access off
+
+
 ```
 
 #### Step 4: Deploy Container Instances

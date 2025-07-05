@@ -154,7 +154,7 @@ az container create \
         AZURE_STORAGE_CONNECTION_STRING="$STORAGE_CONNECTION_STRING" \
         AZURE_STORAGE_CONTAINER_NAME="rag-documents" \
         GOOGLE_API_KEY="$GOOGLE_API_KEY" \
-    --ports 8000 \
+    --ports 3000 \
     --dns-name-label "rag-backend-$(date +%s)" \
     --restart-policy Always
 
@@ -164,7 +164,7 @@ sleep 60
 
 # Get backend URL
 BACKEND_URL=$(az container show --resource-group $RESOURCE_GROUP --name $CONTAINER_GROUP_NAME --query ipAddress.fqdn --output tsv)
-BACKEND_URL="http://$BACKEND_URL:8000"
+BACKEND_URL="http://$BACKEND_URL:3000"
 
 # Create frontend container
 az container create \
