@@ -1,4 +1,29 @@
+version: '3.8'
+
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: rag-postgres
+    environment:
+      - POSTGRES_DB=rag_db
+      - POSTGRES_USER=rag_user
+      - POSTGRES_PASSWORD=rag_password
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   # FastAPI Backend Service
   backend:
     build:
@@ -9,12 +34,16 @@ services:
       - "8000:8000"
     environment:
       - PYTHONPATH=/app
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - DATABASE_URL=postgresql://rag_user:rag_password@postgres:5432/rag_db
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+      - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-rag-documents}
     volumes:
-      - ./uploads:/app/uploads
+      - azure_files:/app/uploads
       - ./data:/app/data
     depends_on:
-      - ollama
+      postgres:
+        condition: service_healthy
     networks:
       - rag-network
     restart: unless-stopped
@@ -35,38 +64,12 @@ services:
       - rag-network
     restart: unless-stopped
 
-  # Ollama Service
-  ollama:
-    image: ollama/ollama:latest
-    container_name: rag-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_ORIGINS=*
-    networks:
-      - rag-network
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:11434/api/tags" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
-
 networks:
   rag-network:
     driver: bridge
 
 volumes:
-  uploads:
-  data:
-  ollama:
+  postgres_data:
+    driver: local
+  azure_files:
+    driver: local

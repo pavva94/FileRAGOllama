@@ -1,5 +1,8 @@
-# requirements-frontend.txt (Frontend)
+
+# Streamlit and web framework
 streamlit==1.28.1
 requests==2.31.0
-pandas==2.0.3
-numpy==1.24.3
+
+# Utilities
+python-dotenv==1.0.0
+pathlib==1.0.1
