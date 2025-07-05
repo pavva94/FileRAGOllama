@@ -102,7 +102,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+.env.template
 .venv
 env/
 venv/
@@ -144,7 +144,7 @@ uploads/
 logs/
 
 # Environment variables
-.env
+.env.template
 .env.local
 .env.development.local
 .env.test.local
