@@ -34,6 +34,7 @@ echo "📋 Useful commands:"
 echo "   - View logs: docker-compose logs -f"
 echo "   - Stop services: docker-compose down"
 echo "   - Pull Ollama model: docker exec rag-ollama ollama pull llama3.2"
+sleep 30
 
 
 

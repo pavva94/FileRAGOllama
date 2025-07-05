@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS (same as before)
+# Custom CSS
 st.markdown("""
 <style>
     .main-header {
@@ -86,11 +86,19 @@ st.markdown("""
         margin: 1rem 0;
         border-left: 4px solid #2196f3;
     }
+
+    .chat-container {
+        background-color: #ffffff;
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 1rem 0;
+        border: 1px solid #e0e0e0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
-# Helper functions (mostly same as before, with improved error handling)
+# Helper functions
 def check_api_connection():
     """Check if API is accessible"""
     try:
@@ -219,9 +227,6 @@ if not api_connected:
     st.info("Make sure all Docker containers are running: `docker-compose ps`")
     st.stop()
 
-# Rest of the application remains the same...
-# (I'll include the key parts but keep it concise)
-
 # Sidebar
 with st.sidebar:
     st.header("📊 System Status")
@@ -273,63 +278,12 @@ with st.sidebar:
         else:
             st.warning("Please enter a model name")
 
-# Main content area - same as before
-col1, col2 = st.columns([2, 1])
+    st.divider()
 
-with col1:
-    st.header("💬 Chat with Your Documents")
-
-    # Chat interface (same as before)
-    chat_container = st.container()
-
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
-                if message["role"] == "assistant" and "sources" in message:
-                    st.write("**Sources:**")
-                    for source in message["sources"]:
-                        st.markdown(f'<span class="source-tag">📄 {source}</span>', unsafe_allow_html=True)
-                    if "confidence" in message:
-                        st.markdown(f'<div class="confidence-score">Confidence: {message["confidence"]:.2%}</div>',
-                                    unsafe_allow_html=True)
-
-    # Chat input
-    if prompt := st.chat_input("Ask a question about your documents..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-
-        with st.chat_message("user"):
-            st.write(prompt)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                success, response = ask_question_to_api(prompt)
-
-                if success:
-                    st.write(response["answer"])
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": response["answer"],
-                        "sources": response["sources"],
-                        "confidence": response["confidence"]
-                    })
-
-                    if response["sources"]:
-                        st.write("**Sources:**")
-                        for source in response["sources"]:
-                            st.markdown(f'<span class="source-tag">📄 {source}</span>', unsafe_allow_html=True)
-
-                    st.markdown(f'<div class="confidence-score">Confidence: {response["confidence"]:.2%}</div>',
-                                unsafe_allow_html=True)
-                else:
-                    error_msg = f"❌ Error: {response}"
-                    st.error(error_msg)
-                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
-
-with col2:
+    # File management in sidebar
     st.header("📁 Document Management")
 
-    # File upload section (same as before)
+    # File upload section
     st.subheader("Upload New Document")
     uploaded_file = st.file_uploader(
         "Choose a file",
@@ -363,7 +317,7 @@ with col2:
 
     st.divider()
 
-    # File list section (same as before)
+    # File list section
     st.subheader("📚 Uploaded Documents")
 
     if st.button("🔄 Refresh List", key="refresh_btn"):
@@ -398,6 +352,74 @@ with col2:
     else:
         st.error(f"❌ Error loading files: {files_data}")
 
+# Main content area - Chat Interface
+st.header("💬 Chat with Your Documents")
+
+# Chat display area
+chat_container = st.container()
+
+with chat_container:
+    # Display chat history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+            if message["role"] == "assistant" and "sources" in message:
+                if message["sources"]:
+                    st.write("**Sources:**")
+                    for source in message["sources"]:
+                        st.markdown(f'<span class="source-tag">📄 {source}</span>', unsafe_allow_html=True)
+                if "confidence" in message:
+                    st.markdown(f'<div class="confidence-score">Confidence: {message["confidence"]:.2%}</div>',
+                                unsafe_allow_html=True)
+
+# Chat input - MUST be outside of containers/columns
+if prompt := st.chat_input("Ask a question about your documents..."):
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    # Display user message
+    with st.chat_message("user"):
+        st.write(prompt)
+
+    # Generate and display assistant response
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            success, response = ask_question_to_api(prompt)
+
+            if success:
+                st.write(response["answer"])
+
+                # Add to chat history
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response["answer"],
+                    "sources": response.get("sources", []),
+                    "confidence": response.get("confidence", 0.0)
+                })
+
+                # Display sources and confidence
+                if response.get("sources"):
+                    st.write("**Sources:**")
+                    for source in response["sources"]:
+                        st.markdown(f'<span class="source-tag">📄 {source}</span>', unsafe_allow_html=True)
+
+                if "confidence" in response:
+                    st.markdown(f'<div class="confidence-score">Confidence: {response["confidence"]:.2%}</div>',
+                                unsafe_allow_html=True)
+            else:
+                error_msg = f"❌ Error: {response}"
+                st.error(error_msg)
+                st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
+# Clear chat button
+if st.session_state.messages:
+    st.divider()
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("🗑️ Clear Chat History", key="clear_chat", type="secondary"):
+            st.session_state.messages = []
+            st.rerun()
+
 # Footer
 st.divider()
 st.markdown("---")
@@ -405,13 +427,8 @@ st.markdown(
     f"""
     <div style="text-align: center; color: #666; font-size: 0.9rem;">
         <p>Simple RAG System • Running in Docker • API: {API_BASE_URL}</p>
+        <p>💡 <strong>Tip:</strong> Upload documents using the sidebar, then ask questions about them!</p>
     </div>
     """,
     unsafe_allow_html=True
 )
-
-# Clear chat button
-if st.session_state.messages:
-    if st.button("🗑️ Clear Chat History", key="clear_chat", type="secondary"):
-        st.session_state.messages = []
-        st.rerun()

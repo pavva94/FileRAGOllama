@@ -54,7 +54,7 @@ class UploadResponse(BaseModel):
 
 
 # Ollama integration (optional)
-OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_BASE_URL = "http://host.docker.internal:11434"
 
 
 def check_ollama_status():
