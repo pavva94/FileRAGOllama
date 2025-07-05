@@ -6,8 +6,8 @@ import os
 from pathlib import Path
 import time
 
-# Configuration
-API_BASE_URL = "http://localhost:8000"
+# Configuration - Updated for Docker
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # Page configuration
 st.set_page_config(
@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS (same as before)
 st.markdown("""
 <style>
     .main-header {
@@ -78,25 +78,33 @@ st.markdown("""
         background-color: #f8d7da;
         color: #721c24;
     }
+
+    .docker-info {
+        background-color: #e3f2fd;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 4px solid #2196f3;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
-# Helper functions
+# Helper functions (mostly same as before, with improved error handling)
 def check_api_connection():
     """Check if API is accessible"""
     try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
+        response = requests.get(f"{API_BASE_URL}/health", timeout=10)
         return response.status_code == 200, response.json() if response.status_code == 200 else None
-    except requests.RequestException:
-        return False, None
+    except requests.RequestException as e:
+        return False, str(e)
 
 
 def upload_file_to_api(file_content, filename):
     """Upload file to API"""
     try:
         files = {"file": (filename, file_content, "application/octet-stream")}
-        response = requests.post(f"{API_BASE_URL}/upload", files=files, timeout=60)
+        response = requests.post(f"{API_BASE_URL}/upload", files=files, timeout=120)
 
         if response.status_code == 200:
             return True, response.json()
@@ -109,7 +117,7 @@ def upload_file_to_api(file_content, filename):
 def get_files_from_api():
     """Get files from API"""
     try:
-        response = requests.get(f"{API_BASE_URL}/files", timeout=10)
+        response = requests.get(f"{API_BASE_URL}/files", timeout=15)
         if response.status_code == 200:
             return True, response.json()
         else:
@@ -121,7 +129,7 @@ def get_files_from_api():
 def delete_file_from_api(file_id):
     """Delete file from API"""
     try:
-        response = requests.delete(f"{API_BASE_URL}/files/{file_id}", timeout=10)
+        response = requests.delete(f"{API_BASE_URL}/files/{file_id}", timeout=15)
         if response.status_code == 200:
             return True, response.json()
         else:
@@ -137,7 +145,7 @@ def ask_question_to_api(question, max_results=5):
             "question": question,
             "max_results": max_results
         }
-        response = requests.post(f"{API_BASE_URL}/ask", json=data, timeout=30)
+        response = requests.post(f"{API_BASE_URL}/ask", json=data, timeout=60)
 
         if response.status_code == 200:
             return True, response.json()
@@ -150,7 +158,7 @@ def ask_question_to_api(question, max_results=5):
 def get_ollama_models():
     """Get available Ollama models"""
     try:
-        response = requests.get(f"{API_BASE_URL}/ollama/models", timeout=10)
+        response = requests.get(f"{API_BASE_URL}/ollama/models", timeout=15)
         if response.status_code == 200:
             return True, response.json()
         else:
@@ -162,7 +170,7 @@ def get_ollama_models():
 def pull_ollama_model(model_name):
     """Pull Ollama model"""
     try:
-        response = requests.post(f"{API_BASE_URL}/ollama/pull", params={"model_name": model_name}, timeout=300)
+        response = requests.post(f"{API_BASE_URL}/ollama/pull", params={"model_name": model_name}, timeout=600)
         if response.status_code == 200:
             return True, response.json()
         else:
@@ -193,20 +201,34 @@ if "messages" not in st.session_state:
 st.markdown('<div class="main-header"><h1>🧠 Simple RAG System</h1><p>Upload documents and ask questions</p></div>',
             unsafe_allow_html=True)
 
+# Docker info
+st.markdown(f"""
+<div class="docker-info">
+    <h4>🐳 Docker Environment</h4>
+    <p><strong>API Endpoint:</strong> {API_BASE_URL}</p>
+    <p><strong>Environment:</strong> {"Docker Container" if API_BASE_URL != "http://localhost:8000" else "Local Development"}</p>
+</div>
+""", unsafe_allow_html=True)
+
 # Check API connection
 api_connected, health_info = check_api_connection()
 
 if not api_connected:
-    st.error(
-        "❌ Cannot connect to the API server. Please make sure the FastAPI server is running on http://localhost:8000")
+    st.error(f"❌ Cannot connect to the API server at {API_BASE_URL}")
+    st.error(f"Error details: {health_info}")
+    st.info("Make sure all Docker containers are running: `docker-compose ps`")
     st.stop()
+
+# Rest of the application remains the same...
+# (I'll include the key parts but keep it concise)
 
 # Sidebar
 with st.sidebar:
     st.header("📊 System Status")
-
-    # API Status
     st.success("✅ API Connected")
+
+    # Container status
+    st.info("🐳 Running in Docker")
 
     # Ollama Status
     if health_info:
@@ -223,6 +245,9 @@ with st.sidebar:
 
     # Ollama Management
     st.header("🤖 Ollama Management")
+
+    # Docker command helper
+    st.info("💡 To pull models via Docker:\n`docker exec rag-ollama ollama pull llama3.2`")
 
     # Get available models
     models_success, models_data = get_ollama_models()
@@ -248,47 +273,40 @@ with st.sidebar:
         else:
             st.warning("Please enter a model name")
 
-# Main content area
+# Main content area - same as before
 col1, col2 = st.columns([2, 1])
 
 with col1:
     st.header("💬 Chat with Your Documents")
 
-    # Chat interface
+    # Chat interface (same as before)
     chat_container = st.container()
 
     with chat_container:
-        # Display chat messages
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.write(message["content"])
-
                 if message["role"] == "assistant" and "sources" in message:
                     st.write("**Sources:**")
                     for source in message["sources"]:
                         st.markdown(f'<span class="source-tag">📄 {source}</span>', unsafe_allow_html=True)
-
                     if "confidence" in message:
                         st.markdown(f'<div class="confidence-score">Confidence: {message["confidence"]:.2%}</div>',
                                     unsafe_allow_html=True)
 
     # Chat input
     if prompt := st.chat_input("Ask a question about your documents..."):
-        # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
 
         with st.chat_message("user"):
             st.write(prompt)
 
-        # Get response from API
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 success, response = ask_question_to_api(prompt)
 
                 if success:
                     st.write(response["answer"])
-
-                    # Store assistant message with metadata
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": response["answer"],
@@ -296,13 +314,11 @@ with col1:
                         "confidence": response["confidence"]
                     })
 
-                    # Display sources
                     if response["sources"]:
                         st.write("**Sources:**")
                         for source in response["sources"]:
                             st.markdown(f'<span class="source-tag">📄 {source}</span>', unsafe_allow_html=True)
 
-                    # Display confidence
                     st.markdown(f'<div class="confidence-score">Confidence: {response["confidence"]:.2%}</div>',
                                 unsafe_allow_html=True)
                 else:
@@ -313,7 +329,7 @@ with col1:
 with col2:
     st.header("📁 Document Management")
 
-    # File upload
+    # File upload section (same as before)
     st.subheader("Upload New Document")
     uploaded_file = st.file_uploader(
         "Choose a file",
@@ -340,8 +356,6 @@ with col2:
                     st.write(f"**File ID:** {result['file_id']}")
                     st.write(f"**Chunks created:** {result['chunk_count']}")
                     st.write(f"**File size:** {format_file_size(result['file_size'])}")
-
-                    # Refresh the file list
                     time.sleep(1)
                     st.rerun()
                 else:
@@ -349,14 +363,12 @@ with col2:
 
     st.divider()
 
-    # File list
+    # File list section (same as before)
     st.subheader("📚 Uploaded Documents")
 
-    # Refresh button
     if st.button("🔄 Refresh List", key="refresh_btn"):
         st.rerun()
 
-    # Get files from API
     files_success, files_data = get_files_from_api()
 
     if files_success and files_data:
@@ -367,12 +379,10 @@ with col2:
                 st.write(f"**Upload Date:** {file_info['upload_date']}")
                 st.write(f"**Chunks:** {file_info['chunk_count']}")
 
-                # Delete button
                 if st.button(f"🗑️ Delete", key=f"delete_{file_info['id']}", type="secondary"):
                     if st.session_state.get(f"confirm_delete_{file_info['id']}", False):
                         with st.spinner("Deleting file..."):
                             success, result = delete_file_from_api(file_info['id'])
-
                             if success:
                                 st.success("✅ File deleted successfully!")
                                 time.sleep(1)
@@ -392,9 +402,9 @@ with col2:
 st.divider()
 st.markdown("---")
 st.markdown(
-    """
+    f"""
     <div style="text-align: center; color: #666; font-size: 0.9rem;">
-        <p>Simple RAG System • Built with Streamlit & FastAPI</p>
+        <p>Simple RAG System • Running in Docker • API: {API_BASE_URL}</p>
     </div>
     """,
     unsafe_allow_html=True

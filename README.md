@@ -1,296 +1,338 @@
-# 🤖 RAG Assistant
+# RAG System Docker Setup
 
-A full-stack Retrieval-Augmented Generation (RAG) application that allows users to upload documents, ask questions, and receive AI-powered answers based on the content of their documents.
+This guide will help you containerize and run your RAG (Retrieval-Augmented Generation) system using Docker.
 
-## ✨ Features
+## 📋 Prerequisites
 
-- **📁 Document Upload**: Support for TXT, PDF, MD, and DOCX files
-- **🔍 Smart Search**: Vector similarity search using PostgreSQL with pgvector
-- **🤖 AI-Powered Answers**: Local LLM integration with Ollama (llama3.2:latest)
-- **🎯 Model Selection**: Choose from available Ollama models
-- **💬 Chat Interface**: Interactive question-answering with chat history
-- **📊 File Management**: View, manage, and delete uploaded documents
-- **🌐 Web Interface**: Beautiful Streamlit frontend
-- **⚡ Fast API**: RESTful backend with automatic documentation
+- Docker (version 20.10 or higher)
+- Docker Compose (version 2.0 or higher)
+- At least 4GB of RAM available for Docker
+- 10GB of free disk space (for Ollama models)
 
-## 🏗️ Architecture
+## 🏗️ Project Structure
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Streamlit     │    │    FastAPI      │    │   PostgreSQL    │
-│   Frontend      │────│    Backend      │────│   + pgvector    │
-│                 │    │                 │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                │
-                       ┌─────────────────┐
-                       │     Ollama      │
-                       │   llama3.2      │
-                       │                 │
-                       └─────────────────┘
+rag-system/
+├── docker-compose.yml          # Multi-service orchestration
+├── Dockerfile.backend          # FastAPI backend container
+├── Dockerfile.frontend         # Streamlit frontend container
+├── requirements.txt            # Backend Python dependencies
+├── requirements-frontend.txt   # Frontend Python dependencies
+├── .dockerignore              # Files to exclude from Docker builds
+├── main.py                    # FastAPI application (your existing file)
+├── simple_rag.py              # RAG system implementation (your existing file)
+├── streamlit_app.py           # Updated Streamlit app for Docker
+├── scripts/
+│   ├── setup.sh               # Initial setup script
+│   ├── start.sh               # Start services
+│   ├── stop.sh                # Stop services
+│   ├── logs.sh                # View logs
+│   ├── reset.sh               # Reset everything
+│   └── pull-model.sh          # Pull Ollama models
+├── uploads/                   # Uploaded files (created automatically)
+├── data/                      # RAG system data (created automatically)
+└── ollama/                    # Ollama models and config (created automatically)
 ```
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 1. Create the Project Structure
 
-- Python 3.8+
-- PostgreSQL 12+
-- Ollama
-
-### 1. Clone the Repository
+Create all the necessary files in your project directory:
 
 ```bash
-git clone <repository-url>
-cd rag-assistant
+# Create directories
+mkdir -p rag-system/scripts
+cd rag-system
+
+# Create the files using the provided artifacts
+# (Copy the content from the artifacts above)
 ```
 
-### 2. Create Virtual Environment
+### 2. Set Up Files
+
+Create the following files with the content from the artifacts:
+
+- `docker-compose.yml` - Main orchestration file
+- `Dockerfile.backend` - Backend container definition
+- `Dockerfile.frontend` - Frontend container definition
+- `requirements.txt` - Backend dependencies
+- `requirements-frontend.txt` - Frontend dependencies
+- `.dockerignore` - Files to exclude from builds
+- `streamlit_app.py` - Updated Streamlit app (replace your existing one)
+
+### 3. Create Setup Scripts
+
+Make the scripts executable:
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Create all scripts from the artifacts
+chmod +x scripts/*.sh
 ```
 
-### 3. Install Dependencies
+### 4. Initial Setup
+
+Run the setup script:
 
 ```bash
-pip install -r requirements.txt
+./scripts/setup.sh
 ```
 
-### 4. Set Up PostgreSQL
+This will:
+- Create necessary directories
+- Build Docker images
+- Start all services
+- Display access information
 
-```sql
--- Create database
-CREATE DATABASE rag_db;
+## 🐳 Services Overview
 
--- Install pgvector extension
-\c rag_db
-CREATE EXTENSION vector;
-```
+The Docker setup includes three main services:
 
-### 5. Install and Configure Ollama
+### 1. Backend (FastAPI)
+- **Port:** 8000
+- **Container:** `rag-backend`
+- **Purpose:** API endpoints for file upload, RAG processing, and chat
+
+### 2. Frontend (Streamlit)
+- **Port:** 8501
+- **Container:** `rag-frontend`
+- **Purpose:** Web interface for interacting with the RAG system
+
+### 3. Ollama (LLM Service)
+- **Port:** 11434
+- **Container:** `rag-ollama`
+- **Purpose:** Local LLM inference for enhanced responses
+
+## 📖 Usage
+
+### Starting the System
 
 ```bash
-# Install Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
+# Start all services
+./scripts/start.sh
 
-# Start Ollama service
-ollama serve
-
-# Pull llama3.2:latest model
-ollama pull llama3.2:latest
+# Or manually with docker-compose
+docker-compose up -d
 ```
 
-### 6. Configure Environment Variables
+### Accessing the Application
 
-Create a `.env` file in the project root:
+- **Frontend:** http://localhost:8501
+- **Backend API:** http://localhost:8000
+- **API Documentation:** http://localhost:8000/docs
+- **Ollama API:** http://localhost:11434
 
-```env
-DATABASE_URL=postgresql://username:password@localhost/rag_db
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2:latest
-UPLOAD_DIR=./uploads
-API_BASE_URL=http://localhost:8000
-```
-
-### 7. Run the Application
-
-**Start the Backend:**
-```bash
-python app.py
-```
-
-**Start the Frontend (in another terminal):**
-```bash
-streamlit run streamlit_app.py
-```
-
-### 8. Access the Application
-
-- **Frontend**: http://localhost:8501
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
-
-## 📦 Installation
-
-### Option 1: From Requirements File
+### Pulling Ollama Models
 
 ```bash
-pip install -r requirements.txt
+# Using the script
+./scripts/pull-model.sh llama3.2
+
+# Or manually
+docker exec rag-ollama ollama pull llama3.2:latest
 ```
 
-### Option 2: Manual Installation
+### Viewing Logs
 
 ```bash
-pip install fastapi uvicorn asyncpg sentence-transformers langchain httpx aiofiles python-multipart streamlit requests
+# All services
+./scripts/logs.sh
+
+# Specific service
+./scripts/logs.sh backend
+./scripts/logs.sh frontend
+./scripts/logs.sh ollama
+```
+
+### Stopping the System
+
+```bash
+# Stop all services
+./scripts/stop.sh
+
+# Or manually
+docker-compose down
 ```
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:password@localhost/rag_db` |
-| `OLLAMA_URL` | Ollama API endpoint | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Model to use for generation | `llama3.2:latest` |
-| `UPLOAD_DIR` | Directory for uploaded files | `./uploads` |
-| `API_BASE_URL` | FastAPI backend URL | `http://localhost:8000` |
+You can customize the setup by modifying environment variables in `docker-compose.yml`:
 
-### Database Setup
-
-The application automatically creates the required tables on startup:
-- `files`: Stores file metadata
-- `embeddings`: Stores text chunks and their vector embeddings
-
-## 🎯 Usage
-
-### 1. Upload Documents
-
-- Navigate to the web interface
-- Use the file upload section to upload documents
-- Supported formats: TXT, PDF, MD, DOCX
-- Files are automatically processed and chunked
-
-### 2. Select Model
-
-- Choose from available Ollama models in the dropdown
-- Default model is llama3.2:latest
-- Pull new models using the interface if needed
-
-### 3. Ask Questions
-
-- Type your question in the text area
-- Click "Ask Question" to get AI-powered answers
-- View sources and chat history
-
-### 4. Manage Files
-
-- View uploaded files with metadata
-- Delete files when no longer needed
-- Monitor system status in the sidebar
-
-## 🌐 API Endpoints
-
-### File Operations
-- `POST /upload` - Upload and process a file
-- `GET /files` - List all uploaded files
-- `DELETE /files/{file_id}` - Delete a file
-
-### Question Answering
-- `POST /ask` - Ask a question and get an answer
-
-### Model Management
-- `GET /ollama/models` - List available models
-- `POST /ollama/pull` - Pull a new model
-
-### System
-- `GET /health` - Check system health
-- `GET /files/{file_id}/chunks` - View file chunks
-
-## 🧪 Testing
-
-### Test the API
-
-```bash
-# Upload a file
-curl -X POST "http://localhost:8000/upload" \
-     -H "Content-Type: multipart/form-data" \
-     -F "file=@example.txt"
-
-# Ask a question
-curl -X POST "http://localhost:8000/ask" \
-     -H "Content-Type: application/json" \
-     -d '{"question": "What is the main topic?"}'
+```yaml
+environment:
+  - PYTHONPATH=/app
+  - OLLAMA_BASE_URL=http://ollama:11434
+  - API_BASE_URL=http://backend:8000
 ```
 
-### Test the Frontend
+### Volume Mounts
 
-1. Open http://localhost:8501
-2. Upload a test document
-3. Ask a question about the document
-4. Verify the answer and sources
+The setup uses the following volumes for data persistence:
 
-## 🔧 Troubleshooting
+- `./uploads:/app/uploads` - Uploaded files
+- `./data:/app/data` - RAG system data and vector stores
+- `./ollama:/root/.ollama` - Ollama models and configuration
+
+### GPU Support (Optional)
+
+To enable GPU support for Ollama, uncomment the GPU section in `docker-compose.yml`:
+
+```yaml
+ollama:
+  # ... other config
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+```
+
+## 🛠️ Development
+
+### Building Images
+
+```bash
+# Build all images
+docker-compose build
+
+# Build specific service
+docker-compose build backend
+docker-compose build frontend
+```
+
+### Debugging
+
+```bash
+# Enter container shell
+docker exec -it rag-backend bash
+docker exec -it rag-frontend bash
+docker exec -it rag-ollama bash
+
+# View container logs
+docker logs rag-backend
+docker logs rag-frontend
+docker logs rag-ollama
+```
+
+## 📊 Monitoring
+
+### Health Checks
+
+The setup includes health checks for all services:
+
+```bash
+# Check service status
+docker-compose ps
+
+# Check specific service health
+docker inspect rag-backend | jq '.[0].State.Health'
+```
+
+### Resource Usage
+
+```bash
+# Monitor resource usage
+docker stats
+
+# View system usage
+docker system df
+```
+
+## 🔄 Maintenance
+
+### Updating the System
+
+```bash
+# Stop services
+./scripts/stop.sh
+
+# Rebuild images
+docker-compose build
+
+# Start services
+./scripts/start.sh
+```
+
+### Backup Data
+
+```bash
+# Backup uploads and data
+tar -czf rag-backup-$(date +%Y%m%d).tar.gz uploads/ data/ ollama/
+```
+
+### Reset System
+
+```bash
+# WARNING: This will delete all data!
+./scripts/reset.sh
+```
+
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-**1. Database Connection Error**
+1. **Port Already in Use**
+   ```bash
+   # Check what's using the port
+   sudo netstat -tulpn | grep :8000
+   # Kill the process or change ports in docker-compose.yml
+   ```
+
+2. **Out of Memory**
+   ```bash
+   # Increase Docker memory limit
+   # Or use smaller Ollama models
+   ```
+
+3. **Ollama Model Not Loading**
+   ```bash
+   # Check if model is pulled
+   docker exec rag-ollama ollama list
+   
+   # Pull model manually
+   docker exec rag-ollama ollama pull llama3.2:latest
+   ```
+
+4. **API Connection Issues**
+   ```bash
+   # Check if backend is running
+   curl http://localhost:8000/health
+   
+   # Check Docker network
+   docker network ls
+   docker network inspect rag-system_rag-network
+   ```
+
+### Log Analysis
+
 ```bash
-# Check PostgreSQL is running
-sudo systemctl status postgresql
-
-# Verify connection string
-psql "postgresql://username:password@localhost/rag_db"
+# Check specific service logs
+docker-compose logs backend | grep ERROR
+docker-compose logs frontend | grep ERROR
+docker-compose logs ollama | grep ERROR
 ```
 
-**2. Ollama Not Available**
-```bash
-# Check Ollama service
-ollama serve
+## 📝 Notes
 
-# Verify model is available
-ollama list
-```
-
-**3. File Upload Issues**
-```bash
-# Check upload directory permissions
-mkdir -p uploads
-chmod 755 uploads
-```
-
-**4. Vector Extension Missing**
-```sql
--- Install pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
-### Performance Optimization
-
-**1. Database Indexing**
-```sql
--- Create index for better search performance
-CREATE INDEX IF NOT EXISTS embeddings_embedding_idx 
-ON embeddings USING ivfflat (embedding vector_cosine_ops);
-```
-
-**2. Chunking Strategy**
-- Adjust chunk size (default: 1000 characters)
-- Modify overlap (default: 200 characters)
-- Optimize for your document types
-
-## 📊 System Requirements
-
-### Minimum Requirements
-- **CPU**: 4 cores
-- **RAM**: 8GB
-- **Storage**: 10GB free space
-- **Network**: Internet connection for model downloads
-
-### Recommended Requirements
-- **CPU**: 8 cores
-- **RAM**: 16GB
-- **Storage**: 50GB free space
-- **GPU**: Optional (for faster inference)
+- The first startup may take longer as Docker images are built
+- Ollama models are large (2-7GB each) and take time to download
+- The system persists data in local directories, so your uploads and models are preserved between restarts
+- For production use, consider using proper secrets management and SSL certificates
 
 ## 🤝 Contributing
 
+To contribute to this Docker setup:
+
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Test with `docker-compose up`
+5. Submit a pull request
 
-## 🙏 Acknowledgments
+## 📄 License
 
-- **FastAPI**: For the excellent web framework
-- **Streamlit**: For the beautiful frontend framework
-- **Ollama**: For local LLM integration
-- **pgvector**: For PostgreSQL vector operations
-- **Sentence Transformers**: For text embeddings
-- **LangChain**: For document processing utilities
-
-
-
+This Docker setup is provided as-is for educational and development purposes.
