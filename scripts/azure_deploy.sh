@@ -37,6 +37,30 @@ fi
 SUBSCRIPTION_ID=$(az account show --query id --output tsv)
 echo -e "${GREEN}Using subscription: $SUBSCRIPTION_ID${NC}"
 
+# Register required resource providers
+echo -e "${YELLOW}Registering required resource providers...${NC}"
+az provider register --namespace Microsoft.ContainerRegistry
+az provider register --namespace Microsoft.Storage
+az provider register --namespace Microsoft.ContainerInstance
+az provider register --namespace Microsoft.DBforPostgreSQL
+
+# Wait for registration to complete (this can take a few minutes)
+echo -e "${YELLOW}Waiting for resource provider registration to complete...${NC}"
+while true; do
+    ACR_STATUS=$(az provider show --namespace Microsoft.ContainerRegistry --query registrationState --output tsv)
+    STORAGE_STATUS=$(az provider show --namespace Microsoft.Storage --query registrationState --output tsv)
+    CONTAINER_STATUS=$(az provider show --namespace Microsoft.ContainerInstance --query registrationState --output tsv)
+    POSTGRES_STATUS=$(az provider show --namespace Microsoft.DBforPostgreSQL --query registrationState --output tsv)
+
+    if [[ "$ACR_STATUS" == "Registered" && "$STORAGE_STATUS" == "Registered" && "$CONTAINER_STATUS" == "Registered" && "$POSTGRES_STATUS" == "Registered" ]]; then
+        echo -e "${GREEN}All resource providers registered successfully${NC}"
+        break
+    fi
+
+    echo -e "${YELLOW}Waiting for registration... (ACR: $ACR_STATUS, Storage: $STORAGE_STATUS, Containers: $CONTAINER_STATUS, PostgreSQL: $POSTGRES_STATUS)${NC}"
+    sleep 10
+done
+
 # Create resource group
 echo -e "${YELLOW}Creating resource group...${NC}"
 az group create --name $RESOURCE_GROUP --location $LOCATION
